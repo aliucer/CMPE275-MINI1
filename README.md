@@ -1,4 +1,4 @@
-# CMPE-273 Mini Project 1
+# CMPE-275 Mini Project 1
 
 NYC 311 Service Requests — in-memory analytics comparing AoS vs SoA data layouts.
 

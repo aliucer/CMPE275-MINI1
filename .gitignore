@@ -10,3 +10,6 @@ __pycache__/
 .DS_Store
 *.csv
 *.tar.gz
+data/
+data/
+311_*.csv

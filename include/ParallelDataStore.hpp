@@ -20,8 +20,9 @@ public:
     void load(const std::string& path) override {
         CSVParser<Record311> parser(path);
         if (!parser.open()) throw std::runtime_error("Cannot open: " + path);
+        ColumnMap cm = ColumnMap::fromHeader(parser.headerFields());
         Record311 rec;
-        while (parser.readNext(rec))
+        while (parser.readNext(rec, cm))
             records_.push_back(std::move(rec));
         parser.close();
     }
@@ -34,8 +35,9 @@ public:
         for (int i = 0; i < n; ++i) {
             CSVParser<Record311> parser(paths[i]);
             if (!parser.open()) continue;
+            ColumnMap cm = ColumnMap::fromHeader(parser.headerFields());
             Record311 rec;
-            while (parser.readNext(rec))
+            while (parser.readNext(rec, cm))
                 per_file[i].push_back(std::move(rec));
             parser.close();
         }

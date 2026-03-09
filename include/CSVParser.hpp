@@ -1,6 +1,5 @@
 #pragma once
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -15,22 +14,23 @@ public:
     bool open() {
         file_.open(filepath_);
         if (!file_.is_open()) return false;
-        std::string header;
-        if (!std::getline(file_, header)) return false;
+        std::string header_line;
+        if (!std::getline(file_, header_line)) return false;
+        header_fields_ = splitRow(header_line);
         return true;
     }
 
-    void close() {
-        if (file_.is_open()) file_.close();
-    }
+    void close() { if (file_.is_open()) file_.close(); }
 
-    bool readNext(RecordType& record) {
+    const std::vector<std::string>& headerFields() const { return header_fields_; }
+
+    bool readNext(RecordType& record, const ColumnMap& cm) {
         std::string line;
         while (std::getline(file_, line)) {
             ++lines_read_;
             if (line.empty()) continue;
             auto fields = splitRow(line);
-            if (RecordType::fromFields(fields, record)) return true;
+            if (RecordType::fromFields(fields, cm, record)) return true;
         }
         return false;
     }
@@ -66,6 +66,7 @@ private:
     std::string filepath_;
     std::ifstream file_;
     size_t lines_read_;
+    std::vector<std::string> header_fields_;
 };
 
 }

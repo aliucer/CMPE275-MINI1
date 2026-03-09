@@ -32,7 +32,7 @@ DATA="data/nyc_311/311_*.csv"
 echo "=============================================" | tee -a "$OUT"
 echo "  PHASE 1 — Serial (DataStore)"                | tee -a "$OUT"
 echo "=============================================" | tee -a "$OUT"
-/usr/bin/time -v ./build/src/phase1/phase1 $DATA 2>&1 | tee -a "$OUT"
+./build/src/phase1/phase1 $DATA 2>&1 | tee -a "$OUT"
 echo ""                                               | tee -a "$OUT"
 
 # ---- Phase 2 (OpenMP) ----
@@ -41,7 +41,7 @@ echo "=============================================" | tee -a "$OUT"
 echo "  PHASE 2 — Parallel (ParallelDataStore)"      | tee -a "$OUT"
 echo "  OMP_NUM_THREADS=$OMP_NUM_THREADS"             | tee -a "$OUT"
 echo "=============================================" | tee -a "$OUT"
-/usr/bin/time -v ./build/src/phase2/phase2 $DATA 2>&1 | tee -a "$OUT"
+./build/src/phase2/phase2 $DATA 2>&1 | tee -a "$OUT"
 echo ""                                               | tee -a "$OUT"
 
 # ---- Phase 3 (SoA + SIMD + OpenMP) ----
@@ -49,7 +49,7 @@ echo "=============================================" | tee -a "$OUT"
 echo "  PHASE 3 — Vectorized SoA (VectorStore)"      | tee -a "$OUT"
 echo "  OMP_NUM_THREADS=$OMP_NUM_THREADS"             | tee -a "$OUT"
 echo "=============================================" | tee -a "$OUT"
-/usr/bin/time -v ./build/src/phase3/phase3 $DATA 2>&1 | tee -a "$OUT"
+./build/src/phase3/phase3 $DATA 2>&1 | tee -a "$OUT"
 echo ""                                               | tee -a "$OUT"
 
 echo "=============================================" | tee -a "$OUT"

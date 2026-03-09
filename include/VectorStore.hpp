@@ -20,8 +20,9 @@ public:
     void load(const std::string& path) override {
         CSVParser<Record311> parser(path);
         if (!parser.open()) throw std::runtime_error("Cannot open: " + path);
+        ColumnMap cm = ColumnMap::fromHeader(parser.headerFields());
         Record311 rec;
-        while (parser.readNext(rec))
+        while (parser.readNext(rec, cm))
             appendRecord(rec);
         parser.close();
     }

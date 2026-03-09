@@ -79,20 +79,15 @@ BOROUGH_PRECINCTS = {
 
 HEADER = [
     "unique_key", "created_date", "closed_date", "agency", "agency_name",
-    "complaint_type", "descriptor", "descriptor_2", "location_type",
+    "complaint_type", "descriptor", "location_type",
     "incident_zip", "incident_address", "street_name",
     "cross_street_1", "cross_street_2",
-    "intersection_street_1", "intersection_street_2",
     "address_type", "city", "landmark", "facility_type",
     "status", "due_date", "resolution_description",
     "resolution_action_updated_date",
-    "community_board", "council_district", "police_precinct",
-    "bbl", "borough",
+    "community_board", "bbl", "borough",
     "x_coordinate_state_plane", "y_coordinate_state_plane",
     "open_data_channel_type", "park_facility_name", "park_borough",
-    "vehicle_type", "taxi_company_borough", "taxi_pick_up_location",
-    "bridge_highway_name", "bridge_highway_direction",
-    "road_ramp", "bridge_highway_segment",
     "latitude", "longitude", "location",
 ]
 
@@ -103,7 +98,7 @@ def rand_date(start: datetime, end: datetime) -> datetime:
 
 
 def fmt_date(dt: datetime) -> str:
-    return dt.strftime("%m/%d/%Y %I:%M:%S %p")
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.000")
 
 
 def generate_row(uid: int) -> list:
@@ -138,28 +133,23 @@ def generate_row(uid: int) -> list:
         agency + " Agency",                         # agency_name
         complaint,                                  # complaint_type
         descriptor,                                 # descriptor
-        "",                                         # descriptor_2
         "RESIDENTIAL BUILDING",                     # location_type
         zipcode,                                    # incident_zip
         f"{random.randint(1,999)} MAIN ST",         # incident_address
         "MAIN ST",                                  # street_name
-        "", "", "", "",                             # cross/intersection streets
+        "", "",                                     # cross_street_1, cross_street_2
         "ADDRESS",                                  # address_type
         borough.title(),                            # city
         "", "",                                     # landmark, facility_type
         "Closed" if is_closed else "Open",          # status
         "", "", "",                                 # due_date, resolution, action_date
         f"{board_num:02d} {borough}",               # community_board
-        council,                                    # council_district
-        precinct,                                   # police_precinct
         "",                                         # bbl
         borough,                                    # borough
         x,                                          # x_coordinate_state_plane
         y,                                          # y_coordinate_state_plane
         random.choice(CHANNELS),                    # open_data_channel_type
         "", "",                                     # park_facility_name, park_borough
-        "", "", "",                                 # vehicle_type, taxi_*
-        "", "", "", "",                             # bridge/highway fields
         lat,                                        # latitude
         lon,                                        # longitude
         f"({lat}, {lon})",                          # location

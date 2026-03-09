@@ -42,8 +42,10 @@ public:
 
     size_t memoryBytes() const override {
         size_t n = boroughs_.capacity();
-        return n * (sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Borough)
-                  + sizeof(double) * 2);
+        size_t bytes = n * (sizeof(uint64_t) + sizeof(uint32_t) + sizeof(Borough)
+                          + sizeof(double) * 2);
+        for (const auto& s : complaint_types_) bytes += sizeof(std::string) + s.capacity();
+        return bytes;
     }
 
     std::vector<size_t> filterByBorough(const std::string& b) const override {
@@ -56,6 +58,21 @@ public:
             #pragma omp for nowait schedule(static)
             for (size_t i = 0; i < n; ++i)
                 if (boroughs_[i] == target) local.push_back(i);
+            #pragma omp critical
+            result.insert(result.end(), local.begin(), local.end());
+        }
+        return result;
+    }
+
+    std::vector<size_t> filterByComplaintType(const std::string& type) const override {
+        size_t n = complaint_types_.size();
+        std::vector<size_t> result;
+        #pragma omp parallel
+        {
+            std::vector<size_t> local;
+            #pragma omp for nowait schedule(static)
+            for (size_t i = 0; i < n; ++i)
+                if (complaint_types_[i] == type) local.push_back(i);
             #pragma omp critical
             result.insert(result.end(), local.begin(), local.end());
         }
@@ -115,15 +132,17 @@ public:
     }
 
 private:
-    std::vector<uint64_t> unique_keys_;
-    std::vector<uint32_t> created_ymds_;
-    std::vector<Borough>  boroughs_;
-    std::vector<double>   latitudes_;
-    std::vector<double>   longitudes_;
+    std::vector<uint64_t>    unique_keys_;
+    std::vector<uint32_t>    created_ymds_;
+    std::vector<std::string> complaint_types_;
+    std::vector<Borough>     boroughs_;
+    std::vector<double>      latitudes_;
+    std::vector<double>      longitudes_;
 
     void appendRecord(const Record311& r) {
         unique_keys_.push_back(r.unique_key);
         created_ymds_.push_back(r.created_ymd);
+        complaint_types_.push_back(r.complaint_type);
         boroughs_.push_back(r.borough);
         latitudes_.push_back(r.latitude);
         longitudes_.push_back(r.longitude);
@@ -137,6 +156,7 @@ private:
         };
         mv(unique_keys_, other.unique_keys_);
         mv(created_ymds_, other.created_ymds_);
+        mv(complaint_types_, other.complaint_types_);
         mv(boroughs_, other.boroughs_);
         mv(latitudes_, other.latitudes_);
         mv(longitudes_, other.longitudes_);

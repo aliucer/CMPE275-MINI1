@@ -72,6 +72,20 @@ public:
         return result;
     }
 
+    std::vector<size_t> filterByComplaintType(const std::string& type) const override {
+        std::vector<size_t> result;
+        #pragma omp parallel
+        {
+            std::vector<size_t> local;
+            #pragma omp for nowait schedule(static)
+            for (size_t i = 0; i < records_.size(); ++i)
+                if (records_[i].complaint_type == type) local.push_back(i);
+            #pragma omp critical
+            result.insert(result.end(), local.begin(), local.end());
+        }
+        return result;
+    }
+
     std::vector<size_t> filterByGeoBox(double minLat, double maxLat,
                                         double minLon, double maxLon) const override {
         std::vector<size_t> result;

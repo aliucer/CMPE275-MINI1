@@ -41,6 +41,13 @@ public:
         return result;
     }
 
+    std::vector<size_t> filterByComplaintType(const std::string& type) const override {
+        std::vector<size_t> result;
+        for (size_t i = 0; i < records_.size(); ++i)
+            if (records_[i].complaint_type == type) result.push_back(i);
+        return result;
+    }
+
     std::vector<size_t> filterByGeoBox(double minLat, double maxLat,
                                         double minLon, double maxLon) const override {
         std::vector<size_t> result;

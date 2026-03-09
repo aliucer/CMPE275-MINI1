@@ -21,13 +21,16 @@ inline void runAllBenchmarks(IDataStore& store, const std::string& csvOut) {
     results.push_back(Benchmark::run("Q1_borough", ITERS, [&]() {
         return store.filterByBorough("BROOKLYN").size();
     }));
-    results.push_back(Benchmark::run("Q2_geobox", ITERS, [&]() {
+    results.push_back(Benchmark::run("Q2_string", ITERS, [&]() {
+        return store.filterByComplaintType("Noise - Residential").size();
+    }));
+    results.push_back(Benchmark::run("Q3_geobox", ITERS, [&]() {
         return store.filterByGeoBox(40.700, 40.882, -74.020, -73.907).size();
     }));
-    results.push_back(Benchmark::run("Q3_date", ITERS, [&]() {
+    results.push_back(Benchmark::run("Q4_date", ITERS, [&]() {
         return store.filterByDateRange(20220101, 20221231).size();
     }));
-    results.push_back(Benchmark::run("Q4_centroid", ITERS, [&]() {
+    results.push_back(Benchmark::run("Q5_centroid", ITERS, [&]() {
         auto [la, lo, v] = store.computeCentroid();
         return v;
     }));

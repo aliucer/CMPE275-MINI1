@@ -7,7 +7,7 @@
 
 We used the NYC 311 Service Requests dataset from NYC OpenData. 311 is New York's non-emergency complaint system - residents report issues like noise, illegal parking, broken streetlights, etc. We downloaded data from 2020 through 2026 using the Socrata API, split into 75 monthly CSV files. Total: 20,403,336 records, roughly 13 GB on disk.
 
-We chose this dataset because it meets the size requirement (>2M records, >12 GB) and has a mix of field types: categorical (borough), temporal (dates), geographic (lat/lon), and free-text (complaint type). This variety lets us compare how different data types behave under different memory layouts.
+We chose this dataset because it has more than 2M records, exceeds 12 GB, and covers a mix of field types: categorical (borough), temporal (dates), geographic (lat/lon), and free-text (complaint type).
 
 All benchmarks ran on Google Colab with an AMD EPYC 7B12 (8 cores) and 50 GB RAM. We used g++ with `-O2` optimization. Each query was run 12 times and we report the mean.
 
@@ -122,7 +122,7 @@ This is why Q1_borough (1 byte per record) and Q3_geobox (16 bytes per record) e
 
 ### Filter vs Reduction
 
-The results show that SoA benefit depends heavily on the **output type** of the query, not just the data layout. Our four filter queries all produce large result vectors, which limits SoA's advantage. The one reduction query (centroid) avoids output allocation entirely and shows the full benefit of contiguous memory access. In a real system, aggregate queries (counts, sums, averages) would benefit most from SoA, while search queries that need to return matching records would see diminishing returns.
+The results show that SoA benefit depends heavily on the **output type** of the query, not just the data layout. Our four filter queries all produce large result vectors, which limits SoA's advantage. The one reduction query (centroid) avoids output allocation entirely and shows the full benefit of contiguous memory access.
 
 ## 6. String Experiment
 

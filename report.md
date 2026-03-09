@@ -1,7 +1,7 @@
 # Memory Overload - NYC 311 Service Requests
 
 **CMPE 275 - Mini Project 1**  
-**Team:** Anukrithi Myadala, Ali Ucerr, Asim Mohammed
+**Team:** Anukrithi Myadala, Ali Ucer, Asim Mohammed
 
 ## 1. Introduction
 

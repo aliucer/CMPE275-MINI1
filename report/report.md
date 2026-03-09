@@ -1,11 +1,11 @@
-# Memory Overload — NYC 311 Service Requests
+# Memory Overload - NYC 311 Service Requests
 
-**CMPE 275 — Mini Project 1**  
+**CMPE 275 - Mini Project 1**  
 **Team:** [Name 1], [Name 2], [Name 3]
 
 ## 1. Introduction
 
-We used the NYC 311 Service Requests dataset from NYC OpenData. 311 is New York's non-emergency complaint system — residents report issues like noise, illegal parking, broken streetlights, etc. We downloaded data from 2020 through 2025 using the Socrata API, split into 72 monthly CSV files. Total: 20,403,336 records, roughly 13 GB on disk.
+We used the NYC 311 Service Requests dataset from NYC OpenData. 311 is New York's non-emergency complaint system - residents report issues like noise, illegal parking, broken streetlights, etc. We downloaded data from 2020 through 2025 using the Socrata API, split into 72 monthly CSV files. Total: 20,403,336 records, roughly 13 GB on disk.
 
 All benchmarks ran on Google Colab with an AMD EPYC 7B12 (8 cores) and 50 GB RAM. We used g++ with `-O2` optimization.
 
@@ -13,39 +13,34 @@ All benchmarks ran on Google Colab with an AMD EPYC 7B12 (8 cores) and 50 GB RAM
 
 ### Data Representation
 
-The assignment says to pay attention to primitive types, so we converted fields at parse time instead of storing raw strings:
+The assignment says to pay attention to primitive types, so we converted fields at parse time instead of storing raw strings. Borough has only 5 possible values, so we encoded it as `enum Borough : uint8_t` - 1 byte per record instead of a ~10 byte string. Dates like `"2020-01-15T00:00:00.000"` get parsed into a `uint32_t` in `YYYYMMDD` format (e.g., `20200115`), which makes range queries a single integer comparison. Latitude and longitude are parsed into `double`.
 
-- **Borough:** 5 possible values → `enum Borough : uint8_t` (1 byte instead of ~10 byte string)
-- **Date:** `"2020-01-15T00:00:00.000"` → `uint32_t` as `20200115` (4 bytes instead of 24 byte string)
-- **Lat/Lon:** parsed to `double`
-- **Complaint type:** kept as `std::string` intentionally — we wanted to compare string vs primitive query performance
-
-Each record is about 60 bytes. A naive all-string version would be 500+.
+We intentionally kept `complaint_type` as a `std::string` to measure how even a single heap-allocated field affects performance compared to the primitive-only fields. With this layout, each record is about 60 bytes - a naive all-string version would be 500+.
 
 ### Class Structure
 
-```
-IDataStore (abstract interface)
-├── DataStore           — Phase 1: serial, vector<Record311>
-├── ParallelDataStore   — Phase 2: OpenMP, vector<Record311>
-└── VectorStore         — Phase 3: SoA, one vector per column
-```
+| Class | Phase | Storage |
+|-------|-------|---------|
+| `IDataStore` | - | Abstract interface |
+| `DataStore` | Phase 1 | Serial, `vector<Record311>` |
+| `ParallelDataStore` | Phase 2 | OpenMP, `vector<Record311>` |
+| `VectorStore` | Phase 3 | SoA, one vector per column |
 
-All three implement the same interface, so the benchmark runner works with any phase without changes. `CSVParser<T>` is a template that reads the header row and builds a `ColumnMap` to find columns by name — this way it handles any column ordering.
+All three implement the same interface, so the benchmark runner works with any phase without changes. `CSVParser<T>` is a template that reads the header row and builds a `ColumnMap` to find columns by name - this way it handles any column ordering.
 
 ### Queries
 
-We picked 5 queries that stress different memory access patterns:
+5 queries, each hitting a different access pattern:
 
-- **Q1_borough** — scans 1-byte enum array
-- **Q2_string** — scans heap-allocated strings (added to show string cost)
-- **Q3_geobox** — checks two doubles (lat + lon) per record
-- **Q4_date** — checks one uint32_t per record
-- **Q5_centroid** — reduction: sums all lat/lon, no output vector
+- **Q1_borough** - enum comparison, 1 byte per record
+- **Q2_string** - `std::string` equality, heap-allocated
+- **Q3_geobox** - lat + lon range check, 16 bytes per record
+- **Q4_date** - `uint32_t` range check, 4 bytes per record
+- **Q5_centroid** - sum lat/lon across all records, no output vector
 
-## 3. Phase 1 — Serial (AoS)
+## 3. Phase 1 - Serial (AoS)
 
-`std::vector<Record311>` — standard Array of Structs. Single-threaded loading and queries.
+`std::vector<Record311>` - standard Array of Structs. Single-threaded loading and queries.
 
 **Load:** 109.1 s | **Memory:** 2,304 MB | **Records:** 20,403,336
 
@@ -59,13 +54,13 @@ We picked 5 queries that stress different memory access patterns:
 
 All queries finish under 225 ms on 20M records. This is already fast compared to string-heavy implementations because we use primitive types. Q3_geobox is slowest (two double comparisons per record), Q4_date is fastest filter (single integer comparison).
 
-## 4. Phase 2 — OpenMP (AoS)
+## 4. Phase 2 - OpenMP (AoS)
 
 Same data layout as Phase 1, but with OpenMP:
 
-- **File loading:** `#pragma omp parallel for schedule(dynamic, 1)` — one thread per CSV file
+- **File loading:** `#pragma omp parallel for schedule(dynamic, 1)` - one thread per CSV file
 - **Filters:** thread-local vectors merged via `#pragma omp critical`
-- **Centroid:** `#pragma omp reduction(+:sum_lat, sum_lon)` — no lock needed
+- **Centroid:** `#pragma omp reduction(+:sum_lat, sum_lon)` - no lock needed
 
 **Load:** 24.3 s | **Memory:** 1,400 MB | **Threads:** 8
 
@@ -77,9 +72,9 @@ Same data layout as Phase 1, but with OpenMP:
 | Q4_date | 33.4 | 3.2× |
 | Q5_centroid | 27.7 | 3.4× |
 
-Loading improved 4.5× (109s → 24s). Query speedups range 1.9×–4.1× on 8 threads, well short of 8×. The queries are memory-bandwidth-bound — adding threads doesn't give more memory bandwidth. The `omp critical` merge also adds overhead when multiple threads try to append results simultaneously.
+Loading improved 4.5× (109s → 24s). Query speedups range 1.9×–4.1× on 8 threads, well short of 8×. The queries are memory-bandwidth-bound - adding threads doesn't give more memory bandwidth. The `omp critical` merge also adds overhead when multiple threads try to append results simultaneously.
 
-## 5. Phase 3 — SoA (Structure of Arrays)
+## 5. Phase 3 - SoA (Structure of Arrays)
 
 Instead of one vector of structs, each field gets its own vector:
 
@@ -105,11 +100,11 @@ Each query only reads the arrays it needs.
 
 ### Where SoA helped
 
-**Q5_centroid** went from 94.8 ms to 8.6 ms (11× faster). It's a pure reduction — no output vector, no push_back, just summing two contiguous double arrays. The compiler can auto-vectorize this with SIMD, and `omp reduction` avoids any locking.
+**Q5_centroid** went from 94.8 ms to 8.6 ms (11× faster). It's a pure reduction - no output vector, no push_back, just summing two contiguous double arrays. The compiler can auto-vectorize this with SIMD, and `omp reduction` avoids any locking.
 
 ### Where SoA didn't help
 
-**Q3_geobox** got slightly worse. It needs both lat and lon per record. In AoS they sit next to each other in the same struct (one cache line). In SoA they're in separate arrays — the CPU has to read from two different memory locations per record.
+**Q3_geobox** got slightly worse. It needs both lat and lon per record. In AoS they sit next to each other in the same struct (one cache line). In SoA they're in separate arrays - the CPU has to read from two different memory locations per record.
 
 **Q1, Q2, Q4** showed small improvements in scan speed, but the bottleneck is the output: these queries return millions of indices (Q1 returns 6M hits), and `push_back` cost is the same regardless of memory layout.
 
@@ -122,26 +117,26 @@ We ran the same benchmarks with and without the `complaint_type` string field:
 
 One `std::string` field doubled memory. Each of the 20M records carries a heap allocation for the complaint text.
 
-In Phase 3, Q2_string (simple equality check) took 38.6 ms while Q5_centroid (summing 20M coordinate pairs) took 8.6 ms. A string comparison is 4.5× slower than actual math because each string lives in a separate heap location — the CPU can't prefetch them efficiently.
+In Phase 3, Q2_string (simple equality check) took 38.6 ms while Q5_centroid (summing 20M coordinate pairs) took 8.6 ms. A string comparison is 4.5× slower than actual math because each string lives in a separate heap location - the CPU can't prefetch them efficiently.
 
 ## 7. Failed Attempts & Lessons Learned
 
-### 7.1 Local Machine — Swap Thrashing
+### 7.1 Local Machine - Swap Thrashing
 First attempt was on a laptop with 16 GB RAM. Loading 13 GB of CSV consumed all physical memory and swapped to disk. Load time went from ~100s to 400+ seconds. We moved to Colab (50 GB) to get real memory benchmarks.
 
 ### 7.2 Socrata API & CSV Parsing
-Socrata API limits rows per request — our first download only got 1,000 rows. We split downloads by month (72 files) and parallelized with `xargs -P 12`.
+Socrata API limits rows per request - our first download only got 1,000 rows. We split downloads by month (72 files) and parallelized with `xargs -P 12`.
 
 The first parser used hardcoded column indices. Socrata exports have different column order and lowercase headers. The parser produced 0 records without any errors. We fixed this by reading the header row and looking up columns by name (`ColumnMap`).
 
 ### 7.3 `omp critical` vs `omp reduction`
-First centroid implementation used `omp critical` — all 8 threads competed for one lock on every iteration. Scaling was terrible. Switching to `omp reduction(+:)` let each thread accumulate locally and merge once at the end. This alone took centroid from ~80 ms to ~28 ms in Phase 2.
+First centroid implementation used `omp critical` - all 8 threads competed for one lock on every iteration. Scaling was terrible. Switching to `omp reduction(+:)` let each thread accumulate locally and merge once at the end. This alone took centroid from ~80 ms to ~28 ms in Phase 2.
 
-### 7.4 SoA — Not Always Faster
+### 7.4 SoA - Not Always Faster
 We expected SoA to improve everything. It didn't. GeoBox got slightly worse because lat and lon got separated into different arrays. Filter queries with millions of hits didn't improve much because the bottleneck shifted from scanning to output construction (push_back). SoA is great for reductions and single-column scans, but not for multi-column queries.
 
 ### 7.5 `std::move` Semantics
-Early code used `push_back(rec)` which copies the string field for every record — 20M heap allocations. Using `push_back(std::move(rec))` transfers ownership without copying.
+Early code used `push_back(rec)` which copies the string field for every record - 20M heap allocations. Using `push_back(std::move(rec))` transfers ownership without copying.
 
 ## 8. Conclusions
 
@@ -169,7 +164,7 @@ Early code used `push_back(rec)` which copies the string field for every record 
 - OpenMP Specification: https://www.openmp.org/specifications/
 - Mike Acton, "Data-Oriented Design and C++", CppCon 2014
 - Intel 64 and IA-32 Architectures Optimization Reference Manual
-- cppreference.com — std::string, Small String Optimization
+- cppreference.com - std::string, Small String Optimization
 
 ## Appendix: Hardware
 

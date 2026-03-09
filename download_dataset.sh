@@ -20,7 +20,7 @@ echo "=========================================================="
 echo ""
 
 # 3. YILLAR ve AYLAR UZERINDEN DONGU
-for YEAR in {2023..2026}; do
+for YEAR in {2020..2026}; do
   for MONTH in 01 02 03 04 05 06 07 08 09 10 11 12; do
       
       # Aylar ve cektikleri gunler

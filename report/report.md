@@ -5,9 +5,11 @@
 
 ## 1. Introduction
 
-We used the NYC 311 Service Requests dataset from NYC OpenData. 311 is New York's non-emergency complaint system - residents report issues like noise, illegal parking, broken streetlights, etc. We downloaded data from 2020 through 2025 using the Socrata API, split into 72 monthly CSV files. Total: 20,403,336 records, roughly 13 GB on disk.
+We used the NYC 311 Service Requests dataset from NYC OpenData. 311 is New York's non-emergency complaint system - residents report issues like noise, illegal parking, broken streetlights, etc. We downloaded data from 2020 through 2026 using the Socrata API, split into 75 monthly CSV files. Total: 20,403,336 records, roughly 13 GB on disk.
 
-All benchmarks ran on Google Colab with an AMD EPYC 7B12 (8 cores) and 50 GB RAM. We used g++ with `-O2` optimization.
+We chose this dataset because it meets the size requirement (>2M records, >12 GB) and has a mix of field types: categorical (borough), temporal (dates), geographic (lat/lon), and free-text (complaint type). This variety lets us compare how different data types behave under different memory layouts.
+
+All benchmarks ran on Google Colab with an AMD EPYC 7B12 (8 cores) and 50 GB RAM. We used g++ with `-O2` optimization. Each query was run 12 times and we report the mean.
 
 ## 2. Design
 
@@ -30,19 +32,23 @@ All three implement the same interface, so the benchmark runner works with any p
 
 ### Queries
 
-5 queries, each hitting a different access pattern:
+We benchmark 5 queries across all three phases. The first four are **filter queries** that return a list of matching record indices. The last one is a **reduction** that computes a single result without building an output list.
 
-- **Q1_borough** - enum comparison, 1 byte per record
-- **Q2_string** - `std::string` equality, heap-allocated
-- **Q3_geobox** - lat + lon range check, 16 bytes per record
-- **Q4_date** - `uint32_t` range check, 4 bytes per record
-- **Q5_centroid** - sum lat/lon across all records, no output vector
+- **Q1_borough** - find all complaints from Brooklyn. Compares a 1-byte enum per record.
+- **Q2_string** - find all "Noise - Residential" complaints. Compares a heap-allocated `std::string` per record.
+- **Q3_geobox** - find all complaints within a lat/lon bounding box (roughly Manhattan). Checks two `double` fields per record.
+- **Q4_date** - find all complaints filed in 2022. Compares a `uint32_t` date per record.
+- **Q5_centroid** - compute the average latitude/longitude of all valid records. Pure math, no output vector.
+
+The filter vs reduction distinction matters: filter queries spend time both scanning data *and* building a result vector (`push_back` for every match), while the reduction only scans. This becomes important when comparing AoS vs SoA in Phase 3.
 
 ## 3. Phase 1 - Serial (AoS)
 
-`std::vector<Record311>` - standard Array of Structs. Single-threaded loading and queries.
+`std::vector<Record311>` - standard Array of Structs. All 75 CSV files loaded sequentially, all queries single-threaded. This is our baseline - every improvement in Phase 2 and 3 is measured against these numbers.
 
 **Load:** 109.1 s | **Memory:** 2,304 MB | **Records:** 20,403,336
+
+![Load Time and Memory Usage](../plots/load_memory.png)
 
 | Query | Mean (ms) | Hits |
 |-------|-----------|------|
@@ -58,9 +64,9 @@ All queries finish under 225 ms on 20M records. This is already fast compared to
 
 Same data layout as Phase 1, but with OpenMP:
 
-- **File loading:** `#pragma omp parallel for schedule(dynamic, 1)` - one thread per CSV file
-- **Filters:** thread-local vectors merged via `#pragma omp critical`
-- **Centroid:** `#pragma omp reduction(+:sum_lat, sum_lon)` - no lock needed
+- **File loading:** `#pragma omp parallel for schedule(dynamic, 1)` - one thread per CSV file. We use `dynamic` scheduling because file sizes vary by month; `static` would leave some threads idle while others process larger files.
+- **Filters:** each thread builds a local result vector, merged via `#pragma omp critical`
+- **Centroid:** `#pragma omp reduction(+:sum_lat, sum_lon)` - no lock needed, each thread accumulates locally
 
 **Load:** 24.3 s | **Memory:** 1,400 MB | **Threads:** 8
 
@@ -90,6 +96,8 @@ Each query only reads the arrays it needs.
 
 **Load:** 27.0 s | **Memory:** 1,993 MB
 
+![Query Performance Comparison](../plots/query_comparison.png)
+
 | Query | Mean (ms) | vs Phase 1 | vs Phase 2 |
 |-------|-----------|------------|------------|
 | Q1_borough | 68.5 | 2.2× | 1.1× |
@@ -98,26 +106,36 @@ Each query only reads the arrays it needs.
 | Q4_date | 37.3 | 2.9× | 0.89× ← worse |
 | Q5_centroid | 8.6 | **11.0×** | **3.2×** |
 
+![Speedup Over Serial Baseline](../plots/speedup.png)
+
 ### Where SoA helped
 
-**Q5_centroid** went from 94.8 ms to 8.6 ms (11× faster). It's a pure reduction - no output vector, no push_back, just summing two contiguous double arrays. The compiler can auto-vectorize this with SIMD, and `omp reduction` avoids any locking.
+**Q5_centroid** went from 94.8 ms to 8.6 ms (11x faster). It's the only reduction query - no output vector, no push_back, just summing two contiguous double arrays. The compiler can auto-vectorize this with SIMD, and `omp reduction` avoids any locking.
 
 ### Where SoA didn't help
 
-**Q3_geobox** got slightly worse. It needs both lat and lon per record. In AoS they sit next to each other in the same struct (one cache line). In SoA they're in separate arrays - the CPU has to read from two different memory locations per record.
+**Q3_geobox** got slightly worse. It needs both lat and lon per record. In AoS they sit next to each other in the same struct (one cache line). In SoA they're in separate arrays, so the CPU reads from two different memory locations per record.
 
-**Q1, Q2, Q4** showed small improvements in scan speed, but the bottleneck is the output: these queries return millions of indices (Q1 returns 6M hits), and `push_back` cost is the same regardless of memory layout.
+**Q1, Q2, Q4** showed small Phase 2 to Phase 3 improvements in scan speed, but the bottleneck is not scanning - it's building the output. These queries return millions of matching indices (Q1 returns 6M hits), and each match triggers a `push_back`. That allocation cost is the same regardless of memory layout.
+
+This is why Q1_borough (1 byte per record) and Q3_geobox (16 bytes per record) end up at similar latencies (~68 vs ~82 ms) in Phase 3, even though borough should be 16x cheaper to scan. The scan itself is fast, but it's buried under the output construction noise.
+
+### Filter vs Reduction
+
+The results show that SoA benefit depends heavily on the **output type** of the query, not just the data layout. Our four filter queries all produce large result vectors, which limits SoA's advantage. The one reduction query (centroid) avoids output allocation entirely and shows the full benefit of contiguous memory access. In a real system, aggregate queries (counts, sums, averages) would benefit most from SoA, while search queries that need to return matching records would see diminishing returns.
 
 ## 6. String Experiment
 
-We ran the same benchmarks with and without the `complaint_type` string field:
+We ran the same benchmarks with and without the `complaint_type` string field to isolate the cost of a single heap-allocated field.
 
 - **Without strings:** Phase 1 memory = 1,024 MB
 - **With one string:** Phase 1 memory = 2,304 MB
 
-One `std::string` field doubled memory. Each of the 20M records carries a heap allocation for the complaint text.
+One `std::string` field doubled memory. In C++, each `std::string` stores a pointer to heap-allocated character data. For 20M records, that means 20M separate heap allocations scattered across memory.
 
-In Phase 3, Q2_string (simple equality check) took 38.6 ms while Q5_centroid (summing 20M coordinate pairs) took 8.6 ms. A string comparison is 4.5× slower than actual math because each string lives in a separate heap location - the CPU can't prefetch them efficiently.
+In Phase 3, Q2_string took 38.6 ms while Q5_centroid took 8.6 ms. The 4.5x gap comes from two things: first, Q2 is a filter that returns 2.3M matching indices (each one a `push_back`), while Q5 is a reduction with no output vector. Second, `double` values in a `vector<double>` sit contiguously, so the CPU prefetches them efficiently. String contents are scattered across the heap - each comparison chases a pointer to a random memory location.
+
+To isolate just the string cost, compare Q2_string (38.6 ms, 2.3M hits) against Q4_date (37.3 ms, 3.2M hits). Q4 returns more results but runs at the same speed, because it scans a contiguous `uint32_t` array instead of chasing heap pointers. The push_back cost is similar for both, so the difference in scan speed is hidden - but Q4 is doing more output work and still keeping up, which tells us the string scan is genuinely slower.
 
 ## 7. Failed Attempts & Lessons Learned
 
@@ -140,15 +158,15 @@ Early code used `push_back(rec)` which copies the string field for every record 
 
 ## 8. Conclusions
 
-1. **Primitive types matter most.** Converting strings to enums and integers at parse time cut memory from ~15 GB to ~1 GB and made serial queries 10× faster.
+1. **Primitive types matter most.** Converting strings to enums and integers at parse time cut memory from ~15 GB to ~1 GB and made serial queries 10x faster.
 
-2. **OpenMP helps I/O more than queries.** File loading got 4.5× faster. Queries only 2–4× because they're memory-bound.
+2. **OpenMP helps I/O more than queries.** File loading got 4.5x faster with 8 threads. Queries only 2-4x because they're memory-bound, not compute-bound.
 
-3. **SoA is great for reductions.** Centroid got 11× faster. But for filter queries that output millions of results, the push_back cost dominates and SoA barely helps.
+3. **SoA benefit depends on query output type.** Reduction queries (centroid) got 11x faster because they scan contiguous arrays without producing output. Filter queries that return millions of results saw minimal improvement because `push_back` cost dominates and is the same in both layouts.
 
-4. **SoA can be worse.** GeoBox queries need two related columns that AoS keeps together. Separating them into different arrays broke co-locality.
+4. **SoA can be worse for multi-column queries.** GeoBox needs lat and lon together. AoS keeps them side-by-side in the same struct; SoA separates them into different arrays, breaking co-locality.
 
-5. **One string doubles memory.** Adding a single `std::string` field to 20M records doubled the footprint and made simple equality checks 4.5× slower than math operations on contiguous arrays.
+5. **One string doubles memory.** Adding a single `std::string` field to 20M records doubled the footprint and made an equality check 4.5x slower than math on contiguous arrays.
 
 ## 9. Individual Contributions
 

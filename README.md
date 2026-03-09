@@ -14,22 +14,30 @@ cmake --build build -j
 
 ## Get the Data
 
+Run the included downloader script. This downloads the massive 13GB dataset month-by-month in parallel to prevent network timeouts:
 ```bash
-curl -o data/311_data.csv \
-  "https://data.cityofnewyork.us/api/views/erm2-nwe9/rows.csv?accessType=DOWNLOAD"
+chmod +x download_dataset.sh
+./download_dataset.sh
 ```
 
 Or generate a small test file:
 ```bash
-python3 data/generate_sample.py 100000 /tmp/test.csv
+python3 data/generate_sample.py 100000 data/test_sample.csv
 ```
 
-## Run
+## Run Benchmarks
 
+Run the comprehensive benchmark script. This compiles the code in Release mode and benchmarks all 3 phases against the ~18M records, saving results to `benchmark_results.txt`:
 ```bash
-./build/src/phase1/phase1 data/311_data.csv          # serial AoS
-./build/src/phase2/phase2 data/311_data.csv           # OpenMP AoS
-./build/src/phase3/phase3 data/311_data.csv           # SoA vectorized
+chmod +x run_benchmarks.sh
+./run_benchmarks.sh
+```
+
+Or run individually:
+```bash
+./build/src/phase1/phase1 data/nyc_311/311_*.csv          # serial AoS
+./build/src/phase2/phase2 data/nyc_311/311_*.csv          # OpenMP AoS
+./build/src/phase3/phase3 data/nyc_311/311_*.csv          # SoA vectorized
 ```
 
 Each phase writes a `phaseN_results.csv` with benchmark timings.

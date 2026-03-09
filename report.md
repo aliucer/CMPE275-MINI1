@@ -131,7 +131,7 @@ Ultimately, these results prove that the benefits of SoA depend heavily on the *
 We ran the same benchmarks with and without the `complaint_type` string field to isolate the cost of a single heap-allocated field.
 
 - **Without strings:** Phase 1 memory = 1,024 MB
-- **With one string:** Phase 1 memory = 2,304 MB
+- **With one string:** Phase 1 memory = 2,304 MB 
 
 One `std::string` field doubled memory. In C++, each `std::string` stores a pointer to heap-allocated character data. For 20M records, that means 20M separate heap allocations scattered across memory.
 

@@ -1,0 +1,75 @@
+=============================================
+  NYC 311 Full Benchmark — Mon Mar  9 02:27:08 AM UTC 2026
+=============================================
+
+--- Hardware Info ---
+CPU: AMD EPYC 7B12
+Cores: 8
+RAM: 50Gi
+OS: Linux 6.6.113+ x86_64
+
+>>> Building in Release mode...
+-- Configuring done (2.6s)
+-- Generating done (0.8s)
+-- Build files have been written to: /content/drive/MyDrive/CMPE275-MINI1/build
+[ 66%] Linking CXX executable phase3
+[ 66%] Built target phase2
+[ 66%] Built target phase3
+>>> Build complete.
+
+=============================================
+  PHASE 1 — Serial (DataStore)
+=============================================
+Phase 1: Serial AoS
+Load: 109.1s
+Records: 20403336 (2304 MB)
+
+Benchmarks (12 runs, mean):
+  Q1_borough: 150.2 ms  (6094561 hits)
+  Q2_string: 181.1 ms  (2346948 hits)
+  Q3_geobox: 223.9 ms  (6447701 hits)
+  Q4_date: 106.8 ms  (3169960 hits)
+  Q5_centroid: 94.8 ms  (20037886 hits)
+
+Results: phase1_results.csv
+
+=============================================
+  PHASE 2 — Parallel (ParallelDataStore)
+  OMP_NUM_THREADS=8
+=============================================
+Phase 2: OpenMP AoS
+Threads: 8
+Load: 24.3s
+Records: 20403336 (1400 MB)
+
+Benchmarks (12 runs, mean):
+  Q1_borough: 77.6 ms  (6094561 hits)
+  Q2_string: 44.6 ms  (2346948 hits)
+  Q3_geobox: 77.3 ms  (6447701 hits)
+  Q4_date: 33.4 ms  (3169960 hits)
+  Q5_centroid: 27.7 ms  (20037886 hits)
+
+Results: phase2_results.csv
+
+=============================================
+  PHASE 3 — Vectorized SoA (VectorStore)
+  OMP_NUM_THREADS=8
+=============================================
+Phase 3: SoA Vectorized
+Threads: 8
+Load: 27.0s
+Records: 20403336 (1993 MB)
+
+Benchmarks (12 runs, mean):
+  Q1_borough: 68.5 ms  (6094561 hits)
+  Q2_string: 38.6 ms  (2346948 hits)
+  Q3_geobox: 81.7 ms  (6447701 hits)
+  Q4_date: 37.3 ms  (3169960 hits)
+  Q5_centroid: 8.6 ms  (20037886 hits)
+
+Results: phase3_results.csv
+
+=============================================
+  ALL DONE — Mon Mar  9 02:30:13 AM UTC 2026
+  Results saved to: benchmark_results.txt
+=============================================

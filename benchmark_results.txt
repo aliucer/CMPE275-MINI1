@@ -1,0 +1,72 @@
+=============================================
+  NYC 311 Full Benchmark — Mon Mar  9 02:09:43 AM UTC 2026
+=============================================
+
+--- Hardware Info ---
+CPU: AMD EPYC 7B12
+Cores: 8
+RAM: 50Gi
+OS: Linux 6.6.113+ x86_64
+
+>>> Building in Release mode...
+-- Configuring done (2.5s)
+-- Generating done (0.7s)
+-- Build files have been written to: /content/drive/MyDrive/CMPE275-MINI1/build
+[ 66%] Linking CXX executable phase3
+[ 66%] Built target phase2
+[ 66%] Built target phase3
+>>> Build complete.
+
+=============================================
+  PHASE 1 — Serial (DataStore)
+=============================================
+Phase 1: Serial AoS
+Load: 104.4s
+Records: 20403336 (1024 MB)
+
+Benchmarks (12 runs, mean):
+  Q1_borough: 116.1 ms  (6094561 hits)
+  Q2_geobox: 221.2 ms  (6447701 hits)
+  Q3_date: 66.7 ms  (3169960 hits)
+  Q4_centroid: 44.6 ms  (20037886 hits)
+
+Results: phase1_results.csv
+
+=============================================
+  PHASE 2 — Parallel (ParallelDataStore)
+  OMP_NUM_THREADS=8
+=============================================
+Phase 2: OpenMP AoS
+Threads: 8
+Load: 26.1s
+Records: 20403336 (622 MB)
+
+Benchmarks (12 runs, mean):
+  Q1_borough: 65.5 ms  (6094561 hits)
+  Q2_geobox: 67.9 ms  (6447701 hits)
+  Q3_date: 36.1 ms  (3169960 hits)
+  Q4_centroid: 11.0 ms  (20037886 hits)
+
+Results: phase2_results.csv
+
+=============================================
+  PHASE 3 — Vectorized SoA (VectorStore)
+  OMP_NUM_THREADS=8
+=============================================
+Phase 3: SoA Vectorized
+Threads: 8
+Load: 22.6s
+Records: 20403336 (1016 MB)
+
+Benchmarks (12 runs, mean):
+  Q1_borough: 64.1 ms  (6094561 hits)
+  Q2_geobox: 68.9 ms  (6447701 hits)
+  Q3_date: 29.4 ms  (3169960 hits)
+  Q4_centroid: 6.4 ms  (20037886 hits)
+
+Results: phase3_results.csv
+
+=============================================
+  ALL DONE — Mon Mar  9 02:12:33 AM UTC 2026
+  Results saved to: benchmark_results.txt
+=============================================

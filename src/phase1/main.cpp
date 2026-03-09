@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
     Timer t;
     t.start();
     DataStore store;
-    store.loadMultiple(files);
+    store.loadMultiple(files); 
     t.stop();
 
     std::cout << std::fixed << std::setprecision(1)

@@ -172,9 +172,9 @@ Early code used `push_back(rec)` which copies the string field for every record 
 
 | Member | Contributions |
 |--------|--------------|
-| [Name 1] | TODO |
-| [Name 2] | TODO |
-| [Name 3] | TODO |
+| Ali Ucer | Built data download/split scripts and CMake build system. Designed `IDataStore` interface, template `CSVParser`, and robust header-based `ColumnMap` parsing. Contributed to final report analysis. |
+| Anukrithi Myadala | Designed `Record311` primitive encoding (`enum`, `uint32_t` dates). Implemented Phase 1 (Serial) queries and data loading. Added `std::move` optimizations. Implemented Phase 2 (OpenMP) load parallelization and thread-local filter vectors. |
+| Asim Mohammed | Implemented OpenMP reduction for centroid to fix lock contention. Built Phase 3 (SoA) `VectorStore` class and adapted queries. Designed the String Experiment. Wrote `plot_static.py` for benchmark graphs. |
 
 ## 10. References
 

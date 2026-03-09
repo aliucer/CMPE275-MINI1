@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include "Record311.hpp"
+
 namespace nyc311 {
 
 template<typename RecordType>

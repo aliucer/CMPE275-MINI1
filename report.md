@@ -1,23 +1,23 @@
 # Memory Overload - NYC 311 Service Requests
 
 **CMPE 275 - Mini Project 1**  
-**Team:** Ali Ucer, Anukrithi Myadala, Asim Mohammed
+**Team:** Anukrithi Myadala, Ali Ucerr, Asim Mohammed
 
 ## 1. Introduction
 
-We used the NYC 311 Service Requests dataset from NYC OpenData. 311 is New York's non-emergency complaint system - residents report issues like noise, illegal parking, broken streetlights, etc. We downloaded data from 2020 through 2026 using the Socrata API, split into 75 monthly CSV files. Total: 20,403,336 records, roughly 13 GB on disk.
+For this project, we went with the NYC 311 Service Requests dataset from NYC OpenData. It's basically the city's catch-all log for non-emergency complaints (noise, bad parking, busted streetlights, etc.).We downloaded data from 2020 through 2026 using the Socrata API, and split it into 75 monthly CSV files. All in, it came out to 20,403,336 records which was roughly 13 GB of disk space.
 
-We chose this dataset because it has more than 2M records, exceeds 12 GB, and covers a mix of field types: categorical (borough), temporal (dates), geographic (lat/lon), and free-text (complaint type).
+This dataset meets the project size requirement (>2M records, >12 GB) and gave us a really solid mix of data types to work with: categorical (borough), temporal (dates), geographic (lat/lon), and free-text (complaint type). Having this kind of variety was exactly what we needed to test how different memory layouts actually handle different types of data in practice.
 
-All benchmarks ran on Google Colab with an AMD EPYC 7B12 (8 cores) and 50 GB RAM. We used g++ with `-O2` optimization. Each query was run 12 times and we report the mean.
+All benchmarks ran on Google Colab with an AMD EPYC 7B12 (8 cores) and 50 GB RAM. We used g++ with `-O2` optimization. To keep the numbers honest and account for variance, we ran every query 12 times and logged the average.
 
 ## 2. Design
 
 ### Data Representation
 
-The assignment says to pay attention to primitive types, so we converted fields at parse time instead of storing raw strings. Borough has only 5 possible values, so we encoded it as `enum Borough : uint8_t` - 1 byte per record instead of a ~10 byte string. Dates like `"2020-01-15T00:00:00.000"` get parsed into a `uint32_t` in `YYYYMMDD` format (e.g., `20200115`), which makes range queries a single integer comparison. Latitude and longitude are parsed into `double`.
+Given the project's emphasis on memory efficiency, we prioritized converting fields into primitive types at parse time rather than storing raw strings. Borough has only 5 possible values, so we encoded it as `enum Borough : uint8_t` - 1 byte per record instead of a ~10 byte string. Dates like `"2020-01-15T00:00:00.000"` get parsed into a `uint32_t` in `YYYYMMDD` format (e.g., `20200115`), allowing us to handle range queries with a single integer comparison. Latitude and longitude are parsed into `double`.
 
-We intentionally kept `complaint_type` as a `std::string` to measure how even a single heap-allocated field affects performance compared to the primitive-only fields. With this layout, each record is about 60 bytes - a naive all-string version would be 500+.
+We intentionally kept `complaint_type` as a `std::string`. We wanted to measure exactly how much a single heap-allocated field impacts query performance compared to strictly primitive fields. With this layout, each record is about 60 bytes - a significant improvement over the 500+ bytes required for a naive all-string layout.
 
 ### Class Structure
 
@@ -28,11 +28,12 @@ We intentionally kept `complaint_type` as a `std::string` to measure how even a 
 | `ParallelDataStore` | Phase 2 | OpenMP, `vector<Record311>` |
 | `VectorStore` | Phase 3 | SoA, one vector per column |
 
-All three implement the same interface, so the benchmark runner works with any phase without changes. `CSVParser<T>` is a template that reads the header row and builds a `ColumnMap` to find columns by name - this way it handles any column ordering.
+All three concrete classes implement the same interface, so the benchmark runner can swap between phases without any changes to the runner logic. 
+`CSVParser<T>` that reads the header row dynamically and builds a ColumnMap. This ensures the parser remains robust even if the input CSV columns are reordered or missing.
 
 ### Queries
 
-We benchmark 5 queries across all three phases. The first four are **filter queries** that return a list of matching record indices. The last one is a **reduction** that computes a single result without building an output list.
+We benchmarked five queries across all three phases to evaluate performance under different workloads.The first four are **filter queries** which return a vector of matching record indices. The fifth one is a **reduction** which computes a single result without building an output list.
 
 - **Q1_borough** - find all complaints from Brooklyn. Compares a 1-byte enum per record.
 - **Q2_string** - find all "Noise - Residential" complaints. Compares a heap-allocated `std::string` per record.
@@ -40,11 +41,11 @@ We benchmark 5 queries across all three phases. The first four are **filter quer
 - **Q4_date** - find all complaints filed in 2022. Compares a `uint32_t` date per record.
 - **Q5_centroid** - compute the average latitude/longitude of all valid records. Pure math, no output vector.
 
-The filter vs reduction distinction matters: filter queries spend time both scanning data *and* building a result vector (`push_back` for every match), while the reduction only scans. This becomes important when comparing AoS vs SoA in Phase 3.
+The filter vs reduction distinction matters. Filter queries spend time both scanning data *and* building a result vector (`push_back` for every match), while the reduction query only scans and accumulates. This becomes important when comparing AoS vs SoA layouts in Phase 3.
 
 ## 3. Phase 1 - Serial (AoS)
 
-`std::vector<Record311>` - standard Array of Structs. All 75 CSV files loaded sequentially, all queries single-threaded. This is our baseline - every improvement in Phase 2 and 3 is measured against these numbers.
+This is our baseline implementation. We used a standard Array of Structures (`std::vector<Record311>`), loaded all 75 CSV files sequentially, and ran every query on a single thread. Every performance gain in Phases 2 and 3 will be measured against these numbers.
 
 **Load:** 109.1 s | **Memory:** 2,304 MB | **Records:** 20,403,336
 
@@ -58,11 +59,11 @@ The filter vs reduction distinction matters: filter queries spend time both scan
 | Q4_date | 106.8 | 3,169,960 |
 | Q5_centroid | 94.8 | 20,037,886 |
 
-All queries finish under 225 ms on 20M records. This is already fast compared to string-heavy implementations because we use primitive types. Q3_geobox is slowest (two double comparisons per record), Q4_date is fastest filter (single integer comparison).
+All queries finish under 225 ms on 20M records. Because we aggressively used primitive types, this is already quite fast compared to string-heavy architectures. Q3_geobox is slowest (two double comparisons per record), Q4_date is fastest filter (single integer comparison).
 
 ## 4. Phase 2 - OpenMP (AoS)
 
-Same data layout as Phase 1, but with OpenMP:
+For Phase 2, we kept the exact same data layout as Phase 1, but introduced OpenMP to parallelize the workload:
 
 - **File loading:** `#pragma omp parallel for schedule(dynamic, 1)` - one thread per CSV file. We use `dynamic` scheduling because file sizes vary by month; `static` would leave some threads idle while others process larger files.
 - **Filters:** each thread builds a local result vector, merged via `#pragma omp critical`
@@ -78,11 +79,11 @@ Same data layout as Phase 1, but with OpenMP:
 | Q4_date | 33.4 | 3.2× |
 | Q5_centroid | 27.7 | 3.4× |
 
-Loading improved 4.5× (109s → 24s). Query speedups range 1.9×–4.1× on 8 threads, well short of 8×. The queries are memory-bandwidth-bound - adding threads doesn't give more memory bandwidth. The `omp critical` merge also adds overhead when multiple threads try to append results simultaneously.
+Loading saw a massive 4.5× improvement (dropping from 109s → 24s). Query speedups, however, hit between 1.9× and 4.1× on 8 threads—well short of a perfect 8× scaling. This indicates that the queries are largely memory-bandwidth-bound; adding more CPU threads doesn't increase available memory bandwidth. Additionally, the `omp critical` merge introduces noticeable overhead when multiple threads fight to append their local results simultaneously.
 
 ## 5. Phase 3 - SoA (Structure of Arrays)
 
-Instead of one vector of structs, each field gets its own vector:
+In Phase 3, we completely restructured the memory layout. Instead of one massive vector of structs, we split every field into its own dedicated vector:
 
 ```cpp
 vector<Borough>     boroughs_;        // 20M × 1 byte
@@ -92,7 +93,7 @@ vector<double>      latitudes_;       // 20M × 8 bytes
 vector<double>      longitudes_;      // 20M × 8 bytes
 ```
 
-Each query only reads the arrays it needs.
+With this layout, each query only reads the arrays it needs.
 
 **Load:** 27.0 s | **Memory:** 1,993 MB
 
@@ -110,19 +111,20 @@ Each query only reads the arrays it needs.
 
 ### Where SoA helped
 
-**Q5_centroid** went from 94.8 ms to 8.6 ms (11x faster). It's the only reduction query - no output vector, no push_back, just summing two contiguous double arrays. The compiler can auto-vectorize this with SIMD, and `omp reduction` avoids any locking.
+**Q5_centroid** went from 94.8 ms to 8.6 ms (11x faster). It's the only reduction query - no output vector, no push_back, just summing up two contiguous double arrays. The compiler easily auto-vectorizes this using SIMD instructions, and the `omp reduction` bypasses thread locking.
 
 ### Where SoA didn't help
 
-**Q3_geobox** got slightly worse. It needs both lat and lon per record. In AoS they sit next to each other in the same struct (one cache line). In SoA they're in separate arrays, so the CPU reads from two different memory locations per record.
+**Q3_geobox** actually regressed. Because this query requires both latitude and longitude for every record, AoS handled it better—both values sat right next to each other in the same cache line. In SoA, they live in separate arrays, forcing the CPU to fetch from two different memory locations per record.
 
-**Q1, Q2, Q4** showed small Phase 2 to Phase 3 improvements in scan speed, but the bottleneck is not scanning - it's building the output. These queries return millions of matching indices (Q1 returns 6M hits), and each match triggers a `push_back`. That allocation cost is the same regardless of memory layout.
+**Q1, Q2, Q4** showed minor Phase 2 to Phase 3 scan speed improvements, but the core bottleneck isn't the scan—it's building the output. These queries return millions of matching indices (Q1 alone spits out ~6M hits), and every single match triggers a dynamic `push_back`. That allocation overhead costs the exact same amount regardless of memory layout.
 
-This is why Q1_borough (1 byte per record) and Q3_geobox (16 bytes per record) end up at similar latencies (~68 vs ~82 ms) in Phase 3, even though borough should be 16x cheaper to scan. The scan itself is fast, but it's buried under the output construction noise.
+This reveals why Q1_borough (1 byte per record) and Q3_geobox (16 bytes per record) end up at similar latencies (~68 vs ~82 ms) in Phase 3, even though borough should be 16x cheaper to scan. The scan itself is lightning fast, but the performance gains are buried under the noise of constructing the output vector.
 
-### Filter vs Reduction
+### The Takeaway:Filter vs Reduction
 
-The results show that SoA benefit depends heavily on the **output type** of the query, not just the data layout. Our four filter queries all produce large result vectors, which limits SoA's advantage. The one reduction query (centroid) avoids output allocation entirely and shows the full benefit of contiguous memory access.
+Ultimately, these results prove that the benefits of SoA depend heavily on the **output type** of the query, not just the data layout itself. Because our four filter queries generate massive result vectors, the SoA advantage hits a bottleneck. The one reduction query (centroid) avoids output allocation entirely and shows the full benefit of contiguous memory access. In a real system, aggregate queries (counts, sums, averages) would benefit most from SoA, while search queries that need to return matching records would see diminishing returns.
+
 
 ## 6. String Experiment
 
